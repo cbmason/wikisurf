@@ -1,40 +1,61 @@
 import scrapy
-import datetime
-import os
 
-from ..items import WikiPage
-from scrapy.loader import ItemLoader
+from ..constants import WIKI_BASE_URL
+from ..items import WikiPageMetadata
+from scrapy.linkextractors import LinkExtractor
+from scrapy.spiders import CrawlSpider, Rule
+from scrapy.link import Link
+from scrapy import Request
 
 
-class SixDegreesSpider(scrapy.spiders.CrawlSpider):
-    name = "six_degrees"
+class SixDegreesSpider(CrawlSpider):
+    """
+    Spider that breadth-first-searches wikipedia for a target page.  Will run up to 6 levels deep, but stops once
+    the target is found.  Assumes that the title of a wiki article is equal to the URL relative path
+    """
 
-    def __init__(self, start_url: str = 'https://en.wikipedia.org/wiki/Mario', log_name: str = 'wikisurf_log'):
+    name = 'six_degrees'
+    allowed_domains = ['wikipedia.org']
+
+    wiki_extractor = LinkExtractor(allow=r'wiki/', deny=[r'#cite_note', r'Help:'])
+    wiki_rule = Rule(wiki_extractor, callback='parse_item', follow=True)
+
+    rules = (
+        wiki_rule
+    )
+
+    def __init__(self, start_url: str = f'{WIKI_BASE_URL}sonic', target: str = f'{WIKI_BASE_URL}blue'):
         self.start_urls = [start_url]
-        # TODO: replace with real logging mechanism
-        if not os.path.exists('./logs'):
-            print("Logs directory doesn't exist, creating...")
-            os.mkdir('logs')
-        full_log_name = f'./logs/{log_name}_{datetime.datetime.now()}.log'
-        with open(full_log_name, 'w') as logfile:
-            logfile.write("**** LOG START ****")
-            self.log_name = full_log_name
+        self.target = target
+        self.finished = False
+        # TODO: this is a class variable, but scrapy is multithreaded, need to make sure we don't have contention
+        #       issues.  We should be OK because if scrapy is configured correctly, it won't
+        self.theMap = dict(str, WikiPageMetadata)
 
+    @staticmethod
+    def extract_name(self, response: scrapy.http.TextResponse) -> str:
+        return response.url.replace(WIKI_BASE_URL, '').lower()
+
+    def parse_item(self, response: scrapy.http.TextResponse) -> WikiPage:
+        if self.finished:
+            return None
+        item = WikiPage()
+        #item['name'] = response.css('.mw-page-title-main::text').get() # TODO: just do everything on URLs
+        item['name'] = self.extract_name(response)
+        link_list = self.wiki_extractor.extract_links()
+        curated_link_list = []
+        for link in link_list:
+            curated_link_list.append(self.extract_name(link.url))
+        item['links'] = curated_link_list
+        return item
+
+    def parse_start_url(self, response, **kwargs):
+        pass
+
+    def parse(self, response, **kwargs):
+        pass
+
+    # Override this function so we can pass in a start instead of having to hard-code it
     def start_requests(self):
-        for url in self.start_urls:
-            yield scrapy.Request(url, callback=self.parse)
-
-    def parse(self, response: scrapy.http.TextResponse, **kwargs):
-        page = response.url.split("/")[-2]
-        filename = f'{page}.html'
-        if self.log_name:
-            with open(self.log_name, 'wb+') as log:
-                log.write(bytes(f"Visited {filename}", 'utf-8'))
-                log.write(response.body)
-        il = ItemLoader(item=WikiPage(), selector=p)
-
-
-
-
-
-
+        for s in self.start_urls:
+            yield Request(s, dont_filter=False)
