@@ -86,8 +86,3 @@ SPIDER_MIDDLEWARES = {
 #HTTPCACHE_DIR = 'httpcache'
 #HTTPCACHE_IGNORE_HTTP_CODES = []
 #HTTPCACHE_STORAGE = 'scrapy.extensions.httpcache.FilesystemCacheStorage'
-
-
-DEPTH_LIMIT = 6,  # 6 degrees
-DEPTH_STATS_VERBOSE = True  # nice stats
-DEPTH_PRIORITY = 1,  # 1 = breadth-first search
