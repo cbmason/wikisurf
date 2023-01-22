@@ -14,7 +14,7 @@ NEWSPIDER_MODULE = 'wikisurf.spiders'
 
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
-#USER_AGENT = 'wikisurf (+http://www.yourdomain.com)'
+USER_AGENT = 'wikisurf'
 
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = True
@@ -45,7 +45,7 @@ COOKIES_ENABLED = False
 # Enable or disable spider middlewares
 # See https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 SPIDER_MIDDLEWARES = {
-   'scrapy.spidermiddlewares.depth.DepthMiddleware': 100,
+   'scrapy.spidermiddlewares.depth.DepthMiddleware': 101,
 }
 
 # Enable or disable downloader middlewares

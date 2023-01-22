@@ -1,59 +1,73 @@
+import re
 import scrapy
+from scrapy.exceptions import CloseSpider
 
-from items import WikiPageMetadata
+from wikisurf.items import WikiPageMetadata
 from scrapy.linkextractors import LinkExtractor
 from scrapy.spiders import Rule, Spider
 from scrapy.link import Link
 from scrapy import Request
 
-WIKI_BASE_URL = r"https://www.wikipedia.org/wiki/"
+WIKI_BASE_URL = r"https://en.wikipedia.org/wiki/"
 
 
 class SixDegreesSpider(Spider):
     """
     Spider that breadth-first-searches wikipedia for a target page.  Will run up to 6 levels deep, but stops once
-    the target is found.  Assumes that the title of a wiki article is equal to the URL relative path
+    the target is found.  "Start_url" and "Target" must be passed in on the command line
     """
 
     name = 'six_degrees'
-    allowed_domains = ['wikipedia.org']
-    wiki_extractor = LinkExtractor(allow=r'wiki/', deny=[r'#cite_note', r'Help:'], unique=True,
-                                   allow_domains=r'wikipedia.org')
-    wiki_rule = Rule(wiki_extractor, callback='parse_item', follow=True)
+    allowed_domains = ['en.wikipedia.org']
+    wiki_extractor = LinkExtractor(allow=re.escape('wiki/'),
+                                   deny=[re.escape(r'#cite'), re.escape(r'Help'), re.escape(r'#'),
+                                         re.escape(r'category:'), re.escape(r'template:'),  re.escape(r'wikipedia:'),
+                                         re.escape(r'special:'), re.escape(r'portal:'), re.escape(r'talk:'),
+                                         re.escape(r'File:'), re.escape(r'?')],
+                                   unique=True, allow_domains=r'en.wikipedia.org',
+                                   restrict_css=['p'])
     custom_settings = {
-        'DEPTH_LIMIT': 6,               # 6 degrees
+        'DEPTH_LIMIT': 5,               # 6 degrees = 5 + 1 for reading children
         'DEPTH_STATS_VERBOSE': True,    # nice stats
         'DEPTH_PRIORITY': 1,            # 1 = breadth-first search
         'ITEM_PIPELINES': {
-            'wikisurf.pipelines.SixDegreesPipeline': 300
+            'wikisurf.pipelines.SixDegreesPipeline': 100
         }
     }
 
-    def __init__(self, start_url: str = f'{WIKI_BASE_URL}sonic_drive-in', target: str = f'{WIKI_BASE_URL}corn_syrup'):
-        self.start_urls = [start_url]
-        self.start_name = self.extract_name(start_url)
-        self.target = self.extract_name(target)
+    def __init__(self, *args, **kwargs):
+        super(SixDegreesSpider, self).__init__(*args, **kwargs)
+        self.start_urls = [self.create_url(kwargs.get('start_url'))]
+        self.start_name = self.extract_name(kwargs.get('start_url'))
+        self.target = self.extract_name(kwargs.get('target'))
         self.finished = False
 
     @staticmethod
     def extract_name(url) -> str:
-        if type(url) == scrapy.http.TextResponse:
+        if isinstance(url, scrapy.http.TextResponse):
             return url.url.replace(WIKI_BASE_URL, '').lower()
-        elif type(url) == str:
+        elif isinstance(url, str):
             return url.replace(WIKI_BASE_URL, '').lower()
         else:
-            raise TypeError()
+            badtype = type(url)
+            raise TypeError(f'extract_name called with {badtype}')
+
+    def create_url(self, name) -> str:
+        # extract just in case we pass this a url
+        normalized_name = self.extract_name(name)
+        url = WIKI_BASE_URL + normalized_name
+        return url
 
     def parse(self, response: scrapy.http.TextResponse, **kwargs):
         # Do nothing if we're done
         if self.finished:
-            return None
+            raise CloseSpider('Finished searching')
 
         # Create the item
         item = WikiPageMetadata()
         item['name'] = self.extract_name(response)
-        if response.meta['parent']:
-            item['parent'] = response.meta['parent']
+        if response.request.headers.get('Referer'):
+            item['parent'] = self.extract_name(str(response.request.headers.get('Referer'), 'utf-8'))
         else:
             item['parent'] = None
         if response.meta['depth']:
@@ -62,20 +76,34 @@ class SixDegreesSpider(Spider):
             item['depth'] = 0
         if item['name'] == self.target:
             self.finished = True
-            # TODO: shut down here instead?
-            return None
-        link_list = self.wiki_extractor.extract_links()
+        link_list = self.wiki_extractor.extract_links(response)
         curated_link_list = []
         for link in link_list:
+            link_name = self.extract_name(link.url)
             curated_link_list.append(self.extract_name(link.url))
-            # Build the next crawler requests
-            if item['depth'] <= 6:
+            if link_name == self.target:
+                found_item = WikiPageMetadata()
+                found_item['name'] = link_name
+                found_item['parent'] = item['name']
+                found_item['depth'] = item['depth'] + 1
+                found_item['children'] = []
+                yield found_item
+                self.finished = True
+            item['children'] = curated_link_list
+
+            # Build the next crawler requests as long as we're not done
+            if item['depth'] <= 6 and not self.finished:
                 yield response.follow(link, self.parse, meta={'depth': item['depth'] + 1, 'parent': item['name']})
-        item['children'] = curated_link_list
 
         yield item
 
     # Override this function so we can pass in a start instead of having to hard-code it
     def start_requests(self):
         for s in self.start_urls:
-            yield Request(s, self.parse, meta={'depth': 1, 'parent': self.extract_name(s)}, dont_filter=False)
+            yield Request(s, self.parse, meta={'depth': 0, 'parent': None}, dont_filter=False)
+            item = WikiPageMetadata()
+            item['name'] = self.extract_name(s)
+            item['parent'] = None
+            item['depth'] = 0
+
+
