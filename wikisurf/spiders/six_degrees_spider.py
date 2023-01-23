@@ -4,8 +4,7 @@ from scrapy.exceptions import CloseSpider
 
 from wikisurf.items import WikiPageMetadata
 from scrapy.linkextractors import LinkExtractor
-from scrapy.spiders import Rule, Spider
-from scrapy.link import Link
+from scrapy.spiders import Spider
 from scrapy import Request
 
 WIKI_BASE_URL = r"https://en.wikipedia.org/wiki/"
@@ -45,9 +44,9 @@ class SixDegreesSpider(Spider):
     @staticmethod
     def extract_name(url) -> str:
         if isinstance(url, scrapy.http.TextResponse):
-            return url.url.replace(WIKI_BASE_URL, '').lower()
+            return url.url.replace(WIKI_BASE_URL, '')
         elif isinstance(url, str):
-            return url.replace(WIKI_BASE_URL, '').lower()
+            return url.replace(WIKI_BASE_URL, '')
         else:
             badtype = type(url)
             raise TypeError(f'extract_name called with {badtype}')
@@ -105,5 +104,3 @@ class SixDegreesSpider(Spider):
             item['name'] = self.extract_name(s)
             item['parent'] = None
             item['depth'] = 0
-
-

@@ -5,6 +5,7 @@
 
 # useful for handling different item types with a single interface
 from itemadapter import ItemAdapter
+
 from wikisurf.items import WikiPageMetadata
 from wikisurf.spiders import six_degrees_spider
 from collections import deque
