@@ -96,7 +96,6 @@ class SixDegreesSpider(Spider):
 
         yield item
 
-    # Override this function so we can pass in a start instead of having to hard-code it
     def start_requests(self):
         for s in self.start_urls:
             yield Request(s, self.parse, meta={'depth': 0, 'parent': None}, dont_filter=False)
